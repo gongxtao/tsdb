@@ -389,7 +389,7 @@ func (w *instrumentedChunkWriter) WriteChunks(chunks ...chunks.Meta) error {
 }
 
 // write creates a new block that is the union of the provided blocks into dir.
-// It cleans up all files of the old blocks after completing successfully.
+// It cleans up all files of the old blocks afterx completing successfully.
 func (c *LeveledCompactor) write(dest string, meta *BlockMeta, blocks ...BlockReader) (err error) {
 	level.Info(c.logger).Log("msg", "compact blocks", "count", len(blocks), "mint", meta.MinTime, "maxt", meta.MaxTime)
 
