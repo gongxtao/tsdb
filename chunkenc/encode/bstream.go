@@ -39,144 +39,144 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-package chunkenc
+package encode
 
 import "io"
 
-// bstream is a stream of bits.
-type bstream struct {
-	stream []byte // the data stream
-	count  uint8  // how many bits are valid in current byte
+// bStream is a Stream of bits.
+type BStream struct {
+	Stream []byte // the data Stream
+	Count  uint8  // how many bits are valid in current byte
 }
 
-func newBReader(b []byte) *bstream {
-	return &bstream{stream: b, count: 8}
+func NewBReader(b []byte) *BStream {
+	return &BStream{Stream: b, Count: 8}
 }
 
-func newBWriter(size int) *bstream {
-	return &bstream{stream: make([]byte, 0, size), count: 0}
+func NewBWriter(size int) *BStream {
+	return &BStream{Stream: make([]byte, 0, size), Count: 0}
 }
 
-func (b *bstream) clone() *bstream {
-	d := make([]byte, len(b.stream))
-	copy(d, b.stream)
-	return &bstream{stream: d, count: b.count}
+func (b *BStream) Clone() *BStream {
+	d := make([]byte, len(b.Stream))
+	copy(d, b.Stream)
+	return &BStream{Stream: d, Count: b.Count}
 }
 
-func (b *bstream) bytes() []byte {
-	return b.stream
+func (b *BStream) Bytes() []byte {
+	return b.Stream
 }
 
 type bit bool
 
 const (
-	zero bit = false
-	one  bit = true
+	Zero bit = false
+	One  bit = true
 )
 
-func (b *bstream) writeBit(bit bit) {
-	if b.count == 0 {
-		b.stream = append(b.stream, 0)
-		b.count = 8
+func (b *BStream) WriteBit(bit bit) {
+	if b.Count == 0 {
+		b.Stream = append(b.Stream, 0)
+		b.Count = 8
 	}
 
-	i := len(b.stream) - 1
+	i := len(b.Stream) - 1
 
 	if bit {
-		b.stream[i] |= 1 << (b.count - 1)
+		b.Stream[i] |= 1 << (b.Count - 1)
 	}
 
-	b.count--
+	b.Count--
 }
 
-func (b *bstream) writeByte(byt byte) {
-	if b.count == 0 {
-		b.stream = append(b.stream, 0)
-		b.count = 8
+func (b *BStream) WriteByte(byt byte) {
+	if b.Count == 0 {
+		b.Stream = append(b.Stream, 0)
+		b.Count = 8
 	}
 
-	i := len(b.stream) - 1
+	i := len(b.Stream) - 1
 
-	// fill up b.b with b.count bits from byt
-	b.stream[i] |= byt >> (8 - b.count)
+	// fill up b.b with b.Count bits from byt
+	b.Stream[i] |= byt >> (8 - b.Count)
 
-	b.stream = append(b.stream, 0)
+	b.Stream = append(b.Stream, 0)
 	i++
-	b.stream[i] = byt << b.count
+	b.Stream[i] = byt << b.Count
 }
 
-func (b *bstream) writeBits(u uint64, nbits int) {
+func (b *BStream) WriteBits(u uint64, nbits int) {
 	u <<= (64 - uint(nbits))
 	for nbits >= 8 {
 		byt := byte(u >> 56)
-		b.writeByte(byt)
+		b.WriteByte(byt)
 		u <<= 8
 		nbits -= 8
 	}
 
 	for nbits > 0 {
-		b.writeBit((u >> 63) == 1)
+		b.WriteBit((u >> 63) == 1)
 		u <<= 1
 		nbits--
 	}
 }
 
-func (b *bstream) readBit() (bit, error) {
-	if len(b.stream) == 0 {
+func (b *BStream) ReadBit() (bit, error) {
+	if len(b.Stream) == 0 {
 		return false, io.EOF
 	}
 
-	if b.count == 0 {
-		b.stream = b.stream[1:]
+	if b.Count == 0 {
+		b.Stream = b.Stream[1:]
 
-		if len(b.stream) == 0 {
+		if len(b.Stream) == 0 {
 			return false, io.EOF
 		}
-		b.count = 8
+		b.Count = 8
 	}
 
-	d := (b.stream[0] << (8 - b.count)) & 0x80
-	b.count--
+	d := (b.Stream[0] << (8 - b.Count)) & 0x80
+	b.Count--
 	return d != 0, nil
 }
 
-func (b *bstream) ReadByte() (byte, error) {
+func (b *BStream) ReadByte() (byte, error) {
 	return b.readByte()
 }
 
-func (b *bstream) readByte() (byte, error) {
-	if len(b.stream) == 0 {
+func (b *BStream) readByte() (byte, error) {
+	if len(b.Stream) == 0 {
 		return 0, io.EOF
 	}
 
-	if b.count == 0 {
-		b.stream = b.stream[1:]
+	if b.Count == 0 {
+		b.Stream = b.Stream[1:]
 
-		if len(b.stream) == 0 {
+		if len(b.Stream) == 0 {
 			return 0, io.EOF
 		}
-		return b.stream[0], nil
+		return b.Stream[0], nil
 	}
 
-	if b.count == 8 {
-		b.count = 0
-		return b.stream[0], nil
+	if b.Count == 8 {
+		b.Count = 0
+		return b.Stream[0], nil
 	}
 
-	byt := b.stream[0] << (8 - b.count)
-	b.stream = b.stream[1:]
+	byt := b.Stream[0] << (8 - b.Count)
+	b.Stream = b.Stream[1:]
 
-	if len(b.stream) == 0 {
+	if len(b.Stream) == 0 {
 		return 0, io.EOF
 	}
 
-	// We just advanced the stream and can assume the shift to be 0.
-	byt |= b.stream[0] >> b.count
+	// We just advanced the Stream and can assume the shift to be 0.
+	byt |= b.Stream[0] >> b.Count
 
 	return byt, nil
 }
 
-func (b *bstream) readBits(nbits int) (uint64, error) {
+func (b *BStream) ReadBits(nbits int) (uint64, error) {
 	var u uint64
 
 	for nbits >= 8 {
@@ -193,18 +193,18 @@ func (b *bstream) readBits(nbits int) (uint64, error) {
 		return u, nil
 	}
 
-	if nbits > int(b.count) {
-		u = (u << uint(b.count)) | uint64((b.stream[0]<<(8-b.count))>>(8-b.count))
-		nbits -= int(b.count)
-		b.stream = b.stream[1:]
+	if nbits > int(b.Count) {
+		u = (u << uint(b.Count)) | uint64((b.Stream[0]<<(8-b.Count))>>(8-b.Count))
+		nbits -= int(b.Count)
+		b.Stream = b.Stream[1:]
 
-		if len(b.stream) == 0 {
+		if len(b.Stream) == 0 {
 			return 0, io.EOF
 		}
-		b.count = 8
+		b.Count = 8
 	}
 
-	u = (u << uint(nbits)) | uint64((b.stream[0]<<(8-b.count))>>(8-uint(nbits)))
-	b.count -= uint8(nbits)
+	u = (u << uint(nbits)) | uint64((b.Stream[0]<<(8-b.Count))>>(8-uint(nbits)))
+	b.Count -= uint8(nbits)
 	return u, nil
 }

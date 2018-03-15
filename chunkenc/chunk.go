@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/tsdb/chunkenc/encode"
 )
 
 // Encoding is the identifier for a chunk encoding.
@@ -27,7 +28,7 @@ func (e Encoding) String() string {
 	switch e {
 	case EncNone:
 		return "none"
-	case EncXOR:
+	case EncFloat64:
 		return "XOR"
 	}
 	return "<unknown>"
@@ -36,12 +37,15 @@ func (e Encoding) String() string {
 // The different available chunk encodings.
 const (
 	EncNone Encoding = iota
-	EncXOR
+	EncFloat64
+	EncInt64
+	EncBoolean
+	EncString
 )
 
 // Chunk holds a sequence of sample pairs that can be iterated over and appended to.
 type Chunk interface {
-	Bytes() []byte
+	Bytes() ([]byte, error)
 	Encoding() Encoding
 	Appender() (Appender, error)
 	Iterator() Iterator
@@ -51,15 +55,15 @@ type Chunk interface {
 // FromData returns a chunk from a byte slice of chunk data.
 func FromData(e Encoding, d []byte) (Chunk, error) {
 	switch e {
-	case EncXOR:
-		return &XORChunk{b: &bstream{count: 0, stream: d}}, nil
+	case EncFloat64:
+		return &XORChunk{b: &encode.BStream{Count: 0, Stream: d}}, nil
 	}
 	return nil, fmt.Errorf("unknown chunk encoding: %d", e)
 }
 
 // Appender adds sample pairs to a chunk.
 type Appender interface {
-	Append(int64, float64)
+	Append(int64, interface{})
 }
 
 // Iterator is a simple iterator that can only get the next value.
@@ -94,7 +98,7 @@ func NewPool() Pool {
 	return &pool{
 		xor: sync.Pool{
 			New: func() interface{} {
-				return &XORChunk{b: &bstream{}}
+				return &XORChunk{b: &encode.BStream{}}
 			},
 		},
 	}
@@ -102,10 +106,10 @@ func NewPool() Pool {
 
 func (p *pool) Get(e Encoding, b []byte) (Chunk, error) {
 	switch e {
-	case EncXOR:
+	case EncFloat64:
 		c := p.xor.Get().(*XORChunk)
-		c.b.stream = b
-		c.b.count = 0
+		c.b.Stream = b
+		c.b.Count = 0
 		return c, nil
 	}
 	return nil, errors.Errorf("invalid encoding %q", e)
@@ -113,7 +117,7 @@ func (p *pool) Get(e Encoding, b []byte) (Chunk, error) {
 
 func (p *pool) Put(c Chunk) error {
 	switch c.Encoding() {
-	case EncXOR:
+	case EncFloat64:
 		xc, ok := c.(*XORChunk)
 		// This may happen often with wrapped chunks. Nothing we can really do about
 		// it but returning an error would cause a lot of allocations again. Thus,
@@ -121,8 +125,8 @@ func (p *pool) Put(c Chunk) error {
 		if !ok {
 			return nil
 		}
-		xc.b.stream = nil
-		xc.b.count = 0
+		xc.b.Stream = nil
+		xc.b.Count = 0
 		p.xor.Put(c)
 	default:
 		return errors.Errorf("invalid encoding %q", c.Encoding())

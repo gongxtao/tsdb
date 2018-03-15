@@ -30,7 +30,7 @@ type pair struct {
 
 func TestChunk(t *testing.T) {
 	for enc, nc := range map[Encoding]func() Chunk{
-		EncXOR: func() Chunk { return NewXORChunk() },
+		EncFloat64: func() Chunk { return NewXORChunk() },
 	} {
 		t.Run(fmt.Sprintf("%s", enc), func(t *testing.T) {
 			for range make([]struct{}, 1) {
@@ -54,7 +54,7 @@ func testChunk(c Chunk) error {
 		ts = int64(1234123324)
 		v  = 1243535.123
 	)
-	for i := 0; i < 60000; i++ {
+	for i := 0; i < 300; i++ {
 		ts += int64(rand.Intn(10000) + 1)
 		// v = rand.Float64()
 		if i%2 == 0 {

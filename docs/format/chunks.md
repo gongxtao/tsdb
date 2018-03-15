@@ -13,3 +13,9 @@ Chunks in the files are referenced from the index by the in-file offset in the 4
 │ └───────────────┴───────────────────┴──────┴────────────────┘ │
 └───────────────────────────────────────────────────────────────┘
 ```
+
+
+The integer type format, encoding type: 1
+```
+
+```
