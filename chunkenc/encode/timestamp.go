@@ -23,7 +23,7 @@ func (e *TimestampEncoder) Append(t int64) {
 	var tDelta uint64
 
 	if e.num == 0 {
-		buf := make([]byte, 0, binary.MaxVarintLen64)
+		buf := make([]byte, binary.MaxVarintLen64)
 		for _, b := range buf[:binary.PutVarint(buf, t)] {
 			e.b.WriteByte(b)
 		}
