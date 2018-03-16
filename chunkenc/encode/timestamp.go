@@ -9,26 +9,26 @@ type TimestampEncoder struct {
 
 	tDelta 	uint64
 	t 		int64
-	num 	uint16
 }
 
-func NewTimestampEncoder(sz int) *TimestampEncoder {
+func NewTimestampEncoder(b *BStream, delta uint64, t int64) *TimestampEncoder {
 	return &TimestampEncoder{
-		b: NewBWriter(sz),
-		num: 0,
+		b: b,
+		tDelta: delta,
+		t: t,
 	}
 }
 
-func (e *TimestampEncoder) Append(t int64) {
+func (e *TimestampEncoder) Encode(t int64, encounter uint16) {
 	var tDelta uint64
 
-	if e.num == 0 {
-		buf := make([]byte, 0, binary.MaxVarintLen64)
+	if encounter == 0 {
+		buf := make([]byte, binary.MaxVarintLen64)
 		for _, b := range buf[:binary.PutVarint(buf, t)] {
 			e.b.WriteByte(b)
 		}
 
-	} else if e.num == 1 {
+	} else if encounter == 1 {
 		tDelta = uint64(t - e.t)
 
 		buf := make([]byte, binary.MaxVarintLen64)
@@ -62,18 +62,6 @@ func (e *TimestampEncoder) Append(t int64) {
 
 	e.t = t
 	e.tDelta = tDelta
-	e.num ++
-}
-
-func (e *TimestampEncoder) Reset() {
-	e.b = NewBWriter(0)
-	e.t = 0
-	e.tDelta = 0
-	e.num = 0
-}
-
-func (e *TimestampEncoder) Bytes() ([]byte, error) {
-	return e.b.Bytes(), nil
 }
 
 type TimestampDecoder struct {
@@ -87,19 +75,23 @@ type TimestampDecoder struct {
 	err 	error
 }
 
-func NewTimestampDecoder(b []byte, total uint16) *TimestampDecoder {
-	it := &TimestampDecoder{	}
+func NewTimestampDecoder(b *BStream, total uint16) *TimestampDecoder {
+	it := &TimestampDecoder{ b: b }
 
 	if total == 0 {
-		it.b = nil
+		it.b = b
 		it.total = 0
 	} else {
 		it.total = total
-		it.b = NewBReader(b)
+		it.b = b
 	}
 
 	it.read = 0
 	return it
+}
+
+func (it *TimestampDecoder) Delta() uint64 {
+	return it.tDelta
 }
 
 func (it *TimestampDecoder) At() int64 {
@@ -190,7 +182,7 @@ func (it *TimestampDecoder) Next() bool {
 
 	it.tDelta = uint64(int64(it.tDelta) + dod)
 	it.t = it.t + int64(it.tDelta)
-	return false
+	return it.err == nil
 }
 
 func bitRange(x int64, nbits uint8) bool {

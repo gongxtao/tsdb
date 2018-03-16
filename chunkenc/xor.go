@@ -47,21 +47,25 @@ import (
 	"encoding/binary"
 	"math"
 	"math/bits"
-	"github.com/prometheus/tsdb/chunkenc/encode"
+	"github.com/gongxtao/tsdb/chunkenc/encode"
+	"fmt"
 )
 
 // XORChunk holds XOR encoded sample data.
 type XORChunk struct {
 	b *encode.BStream
 
-	te 	*encode.TimestampEncoder
-	fe 	*encode.Float64Encoder
 }
 
 // NewXORChunk returns a new chunk with XOR encoding of the given size.
 func NewXORChunk() *XORChunk {
-	b := make([]byte, 2, 128)
-	return &XORChunk{b: &encode.BStream{Stream: b, Count: 0}}
+	b := make([]byte, 3, 128)
+	x := &XORChunk{b: &encode.BStream{Stream: b, Count: 0}}
+
+	// use high bit
+	x.b.Bytes()[0] = byte(EncFloat64 << 4)
+
+	return x
 }
 
 // Encoding returns the encoding type.
@@ -70,13 +74,13 @@ func (c *XORChunk) Encoding() Encoding {
 }
 
 // Bytes returns the underlying byte slice of the chunk.
-func (c *XORChunk) Bytes() ([]byte, error) {
-	return c.b.Bytes(), nil
+func (c *XORChunk) Bytes() []byte {
+	return c.b.Bytes()
 }
 
 // NumSamples returns the number of samples in the chunk.
 func (c *XORChunk) NumSamples() int {
-	return int(binary.BigEndian.Uint16(c.b.Bytes()))
+	return int(binary.BigEndian.Uint16(c.b.Bytes()[1:]))
 }
 
 // Appender implements the Chunk interface.
@@ -100,7 +104,7 @@ func (c *XORChunk) Appender() (Appender, error) {
 		leading:  it.leading,
 		trailing: it.trailing,
 	}
-	if binary.BigEndian.Uint16(a.b.Bytes()) == 0 {
+	if binary.BigEndian.Uint16(a.b.Bytes()[1:]) == 0 {
 		a.leading = 0xff
 	}
 	return a, nil
@@ -111,8 +115,8 @@ func (c *XORChunk) iterator() *xorIterator {
 	// When using striped locks to guard access to chunks, probably yes.
 	// Could only copy data if the chunk is not completed yet.
 	return &xorIterator{
-		br:       encode.NewBReader(c.b.Bytes()[2:]),
-		numTotal: binary.BigEndian.Uint16(c.b.Bytes()),
+		br:       encode.NewBReader(c.b.Bytes()[3:]),
+		numTotal: binary.BigEndian.Uint16(c.b.Bytes()[1:]),
 	}
 }
 
@@ -132,16 +136,22 @@ type xorAppender struct {
 	trailing uint8
 }
 
-func (a *xorAppender) Append(t int64, v interface{}) {
+func (a *xorAppender) Append(value Value) error {
+	f, ok := value.(*Float64Value)
+	if !ok {
+		return fmt.Errorf("value is not floa64 type, %T", value)
+	}
+	t, v := f.t, f.v
+
 	var tDelta uint64
-	num := binary.BigEndian.Uint16(a.b.Bytes())
+	num := binary.BigEndian.Uint16(a.b.Bytes()[1:])
 
 	if num == 0 {
 		buf := make([]byte, binary.MaxVarintLen64)
 		for _, b := range buf[:binary.PutVarint(buf, t)] {
 			a.b.WriteByte(b)
 		}
-		a.b.WriteBits(math.Float64bits(v.(float64)), 64)
+		a.b.WriteBits(math.Float64bits(v), 64)
 
 	} else if num == 1 {
 		tDelta = uint64(t - a.t)
@@ -151,7 +161,7 @@ func (a *xorAppender) Append(t int64, v interface{}) {
 			a.b.WriteByte(b)
 		}
 
-		a.writeVDelta(v.(float64))
+		a.writeVDelta(v)
 
 	} else {
 		tDelta = uint64(t - a.t)
@@ -176,13 +186,15 @@ func (a *xorAppender) Append(t int64, v interface{}) {
 			a.b.WriteBits(uint64(dod), 64)
 		}
 
-		a.writeVDelta(v.(float64))
+		a.writeVDelta(v)
 	}
 
 	a.t = t
-	a.v = v.(float64)
-	binary.BigEndian.PutUint16(a.b.Bytes(), num+1)
+	a.v = v
+	binary.BigEndian.PutUint16(a.b.Bytes()[1:], num+1)
 	a.tDelta = tDelta
+
+	return nil
 }
 
 func bitRange(x int64, nbits uint8) bool {
@@ -239,8 +251,8 @@ type xorIterator struct {
 	err    error
 }
 
-func (it *xorIterator) At() (int64, float64) {
-	return it.t, it.val
+func (it *xorIterator) At() Value {
+	return &Float64Value{it.t, it.val}
 }
 
 func (it *xorIterator) Err() error {

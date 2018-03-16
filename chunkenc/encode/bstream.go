@@ -53,8 +53,8 @@ func NewBReader(b []byte) *BStream {
 	return &BStream{Stream: b, Count: 8}
 }
 
-func NewBWriter(size int) *BStream {
-	return &BStream{Stream: make([]byte, 0, size), Count: 0}
+func NewBWriter(cap int, len int) *BStream {
+	return &BStream{Stream: make([]byte, len, cap), Count: 0}
 }
 
 func (b *BStream) Clone() *BStream {

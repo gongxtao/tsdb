@@ -18,7 +18,9 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/tsdb/chunkenc/encode"
+	"github.com/gongxtao/tsdb/chunkenc/encode"
+	"math"
+	"time"
 )
 
 // Encoding is the identifier for a chunk encoding.
@@ -29,7 +31,9 @@ func (e Encoding) String() string {
 	case EncNone:
 		return "none"
 	case EncFloat64:
-		return "XOR"
+		return "Float64"
+	case EncInt64:
+		return "Int64"
 	}
 	return "<unknown>"
 }
@@ -41,11 +45,12 @@ const (
 	EncInt64
 	EncBoolean
 	EncString
+	EncUint64
 )
 
 // Chunk holds a sequence of sample pairs that can be iterated over and appended to.
 type Chunk interface {
-	Bytes() ([]byte, error)
+	Bytes() []byte
 	Encoding() Encoding
 	Appender() (Appender, error)
 	Iterator() Iterator
@@ -57,18 +62,22 @@ func FromData(e Encoding, d []byte) (Chunk, error) {
 	switch e {
 	case EncFloat64:
 		return &XORChunk{b: &encode.BStream{Count: 0, Stream: d}}, nil
+	case EncInt64:
+		return &IntegerChunk{b: &encode.BStream{Count: 0, Stream: d}}, nil
+	case EncString:
+		return &StringChunk{b: &encode.BStream{Count: 0, Stream: d}}, nil
 	}
 	return nil, fmt.Errorf("unknown chunk encoding: %d", e)
 }
 
 // Appender adds sample pairs to a chunk.
 type Appender interface {
-	Append(int64, interface{})
+	Append(value Value) error
 }
 
 // Iterator is a simple iterator that can only get the next value.
 type Iterator interface {
-	At() (int64, interface{})
+	At() Value
 	Err() error
 	Next() bool
 }
@@ -80,7 +89,7 @@ func NewNopIterator() Iterator {
 
 type nopIterator struct{}
 
-func (nopIterator) At() (int64, interface{}) { return 0, 0 }
+func (nopIterator) At() Value { return &EmptyValue{} }
 func (nopIterator) Next() bool           { return false }
 func (nopIterator) Err() error           { return nil }
 
@@ -111,6 +120,16 @@ func (p *pool) Get(e Encoding, b []byte) (Chunk, error) {
 		c.b.Stream = b
 		c.b.Count = 0
 		return c, nil
+	case EncInt64:
+		c := p.xor.Get().(*IntegerChunk)
+		c.b.Stream = b
+		c.b.Count = 0
+		return c, nil
+	case EncString:
+		c := p.xor.Get().(*StringChunk)
+		c.b.Stream = b
+		c.b.Count = 0
+		return c, nil
 	}
 	return nil, errors.Errorf("invalid encoding %q", e)
 }
@@ -128,8 +147,83 @@ func (p *pool) Put(c Chunk) error {
 		xc.b.Stream = nil
 		xc.b.Count = 0
 		p.xor.Put(c)
+	case EncInt64:
+		xc, ok := c.(*IntegerChunk)
+		if !ok {
+			return nil
+		}
+		xc.b.Stream = nil
+		xc.b.Count = 0
+		p.xor.Put(c)
+	case EncString:
+		xc, ok := c.(*StringChunk)
+		if !ok {
+			return nil
+		}
+		xc.b.Stream = nil
+		xc.b.Count = 0
+		p.xor.Put(c)
 	default:
 		return errors.Errorf("invalid encoding %q", c.Encoding())
 	}
 	return nil
 }
+
+type Value interface {
+	UnixNano() int64
+
+	Value() interface{}
+
+	Size() int
+
+	String() string
+}
+
+func NewValue(t int64, value interface{}) Value {
+	switch v := value.(type) {
+	case float64:
+		return &Float64Value{ t: t, v: v }
+	case int64:
+		return &Int64Value{ t: t, v: v }
+	}
+
+	return &EmptyValue{	}
+}
+
+type Int64Value struct {
+	t 	int64
+	v 	int64
+}
+
+func (i *Int64Value) UnixNano() int64 { return i.t }
+func (i *Int64Value) Value() interface{} { return i.v }
+func (i *Int64Value) Size() int { return 16 }
+func (i *Int64Value) String() string { return fmt.Sprintf("%v %v", time.Unix(0, i.t), i.Value())}
+
+
+type Float64Value struct {
+	t 	int64
+	v 	float64
+}
+
+func (i *Float64Value) UnixNano() int64 { return i.t }
+func (i *Float64Value) Value() interface{} { return i.v }
+func (i *Float64Value) Size() int { return 16 }
+func (i *Float64Value) String() string { return fmt.Sprintf("%v %v", time.Unix(0, i.t), i.Value())}
+
+type EmptyValue struct{}
+
+func (e EmptyValue) UnixNano() int64 { return math.MinInt64 }
+func (e EmptyValue) Value() interface{} { return nil }
+func (e EmptyValue) Size() int { return 0 }
+func (e EmptyValue) String() string { return "" }
+
+type StringValue struct {
+	t	int64
+	v 	string
+}
+
+func (i *StringValue) UnixNano() int64 { return i.t }
+func (i *StringValue) Value() interface{} { return i.v }
+func (i *StringValue) Size() int { return 8 + len(i.v) }
+func (i *StringValue) String() string { return fmt.Sprintf("%v %v", time.Unix(0, i.t), i.Value()) }
