@@ -63,10 +63,17 @@ func (e EmptyValue) String() string { return "" }
 
 type ChunkEnc struct {
 	values 	[]Value
+
+	// type+len(ts)+tData+vData
+	b	 	[]byte
 }
 
-func NewIntegerChunk(sz int) *ChunkEnc {
-	return &ChunkEnc{ values: make([]Value, 0)}
+func NewChunkEnc() *ChunkEnc {
+	return &ChunkEnc{ values: make([]Value, 0), b: make([]byte, 0)}
+}
+
+func NewChunkDec(b []byte) *ChunkEnc {
+	return &ChunkEnc{ values: make([]Value, 0), b: b}
 }
 
 func (c *ChunkEnc) Bytes() ([]byte, error) {
@@ -102,8 +109,34 @@ func (c *ChunkEnc) Appender() (Appender, error) {
 	return c, nil
 }
 
-func (c *ChunkEnc) Iterator() Iterator {
-	return nil
+func (c *ChunkEnc) Iterator() (Iterator, error) {
+	var vit encode.Iterator
+
+	encoding := Encoding(c.b[0])
+
+	// get total values
+	total, i := binary.Uvarint(c.b[1:])
+	if i <= 0 {
+		return nil, fmt.Errorf("can not read the values length")
+	}
+	i += 1
+	tb, vb, err := unpackBlock(c.b[i:])
+	if err != nil {
+		return nil, err
+	}
+
+	tdec := encode.NewTimestampDecoder(tb, uint16(total))
+	switch encoding {
+	case EncFloat64:
+		vit = encode.NewFloat64Decoder(vb, uint16(total))
+	case EncInt64:
+
+	}
+
+	return &chunkIterator{
+		tsIt: tdec,
+		tvIt: vit,
+	}, nil
 }
 
 func (c *ChunkEnc) NumSamples() int {
@@ -129,7 +162,7 @@ func (c *ChunkEnc) encodeFloat() ([]byte, error) {
 	fenc := encode.NewFloat64Encoder(bStreamSize)
 	tenc := encode.NewTimestampEncoder(bStreamSize)
 
-	b, err := c.encodeFloatUsing(tenc, fenc)
+	b, err := c.encodeFloatBuf(tenc, fenc)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +170,7 @@ func (c *ChunkEnc) encodeFloat() ([]byte, error) {
 	return b, nil
 }
 
-func (c *ChunkEnc) encodeFloatUsing(tenc *encode.TimestampEncoder, venc *encode.Float64Encoder) ([]byte, error) {
+func (c *ChunkEnc) encodeFloatBuf(tenc *encode.TimestampEncoder, venc *encode.Float64Encoder) ([]byte, error) {
 
 	for _, value := range c.values {
 		v := value.(*Float64Value)
@@ -156,21 +189,23 @@ func (c *ChunkEnc) encodeFloatUsing(tenc *encode.TimestampEncoder, venc *encode.
 	}
 
 
-	return packBlock(EncFloat64, tb, vb), nil
+	return packBlock(EncFloat64, uint16(len(c.values)), tb, vb), nil
 }
 
-func packBlock(typ Encoding, ts []byte, values []byte) []byte {
-	// We encode the length of the timestamp block using a variable byte encoding.
-	// This allows small byte slices to take up 1 byte while larger ones use 2 or more.
-	sz := 1 + binary.MaxVarintLen64 + len(ts) + len(values)
+// encoding, length values, length ts, tsData, vsData
+func packBlock(typ Encoding, counter uint16, ts []byte, values []byte) []byte {
+	sz := 1 + binary.MaxVarintLen16 + binary.MaxVarintLen64 + len(ts) + len(values)
 	buf := make([]byte, sz)
 
 	b := buf[:sz]
 	b[0] = byte(typ)
-	i := binary.PutUvarint(b[1:1+binary.MaxVarintLen64], uint64(len(ts)))
-	i += 1
 
-	// block is <len timestamp bytes>, <ts bytes>, <value bytes>
+	i := 1
+	// len values
+	i += binary.PutUvarint(b[i:i+binary.MaxVarintLen32], uint64(counter))
+	// len ts
+	i += binary.PutUvarint(b[i:i+binary.MaxVarintLen64], uint64(len(ts)))
+
 	copy(b[i:], ts)
 	// We don't encode the value length because we know it's the rest of the block after
 	// the timestamp block.
@@ -197,5 +232,30 @@ func unpackBlock(buf []byte) (ts, values []byte, err error) {
 	// Unpack the value bytes
 	values = buf[tsIdx:]
 	return
+}
+
+type chunkIterator struct {
+	tsIt 	*encode.TimestampDecoder
+	tvIt 	encode.Iterator
+}
+
+func (it *chunkIterator) At() (int64, interface{}) {
+	return it.tsIt.At(), it.tvIt.At()
+}
+
+func (it *chunkIterator) Err() error {
+	if it.tsIt.Err() != nil {
+		return it.tsIt.Err()
+	}
+
+	return it.tvIt.Err()
+}
+
+func (it *chunkIterator) Next() bool {
+	if ! it.tsIt.Next() {
+		return false
+	}
+
+	return it.tvIt.Next()
 }
 

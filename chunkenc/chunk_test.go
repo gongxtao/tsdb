@@ -74,7 +74,8 @@ func testChunk(c Chunk) error {
 
 		app.Append(ts, v)
 		exp = append(exp, pair{t: ts, v: v})
-		fmt.Println("appended", len(c.Bytes()), c.Bytes()[:2])
+		b, _ := c.Bytes()
+		fmt.Println("appended", len(b), b[:2])
 	}
 
 	it := c.Iterator()

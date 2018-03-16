@@ -68,7 +68,7 @@ type Appender interface {
 
 // Iterator is a simple iterator that can only get the next value.
 type Iterator interface {
-	At() (int64, float64)
+	At() (int64, interface{})
 	Err() error
 	Next() bool
 }
@@ -80,7 +80,7 @@ func NewNopIterator() Iterator {
 
 type nopIterator struct{}
 
-func (nopIterator) At() (int64, float64) { return 0, 0 }
+func (nopIterator) At() (int64, interface{}) { return 0, 0 }
 func (nopIterator) Next() bool           { return false }
 func (nopIterator) Err() error           { return nil }
 

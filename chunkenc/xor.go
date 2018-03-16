@@ -132,7 +132,7 @@ type xorAppender struct {
 	trailing uint8
 }
 
-func (a *xorAppender) Append(t int64, v float64) {
+func (a *xorAppender) Append(t int64, v interface{}) {
 	var tDelta uint64
 	num := binary.BigEndian.Uint16(a.b.Bytes())
 
@@ -141,7 +141,7 @@ func (a *xorAppender) Append(t int64, v float64) {
 		for _, b := range buf[:binary.PutVarint(buf, t)] {
 			a.b.WriteByte(b)
 		}
-		a.b.WriteBits(math.Float64bits(v), 64)
+		a.b.WriteBits(math.Float64bits(v.(float64)), 64)
 
 	} else if num == 1 {
 		tDelta = uint64(t - a.t)
@@ -151,7 +151,7 @@ func (a *xorAppender) Append(t int64, v float64) {
 			a.b.WriteByte(b)
 		}
 
-		a.writeVDelta(v)
+		a.writeVDelta(v.(float64))
 
 	} else {
 		tDelta = uint64(t - a.t)
@@ -176,11 +176,11 @@ func (a *xorAppender) Append(t int64, v float64) {
 			a.b.WriteBits(uint64(dod), 64)
 		}
 
-		a.writeVDelta(v)
+		a.writeVDelta(v.(float64))
 	}
 
 	a.t = t
-	a.v = v
+	a.v = v.(float64)
 	binary.BigEndian.PutUint16(a.b.Bytes(), num+1)
 	a.tDelta = tDelta
 }

@@ -83,6 +83,25 @@ func (e *Float64Encoder) writeVDelta(v float64) {
 	}
 }
 
+func NewFloat64Decoder(b []byte, total uint16) *Float64Decoder {
+	it := &Float64Decoder{}
+
+	if total == 0 {
+		it.total = 0
+		it.b = nil
+	} else {
+		it.total = total
+		it.b = NewBReader(b)
+	}
+
+	it.leading = 0
+	it.trailing = 0
+	it.read = 0
+	it.err = nil
+
+	return it
+}
+
 type Float64Decoder struct {
 	b       *BStream
 	total 	uint16
@@ -96,7 +115,7 @@ type Float64Decoder struct {
 	err    		error
 }
 
-func (it *Float64Decoder) At() float64 {
+func (it *Float64Decoder) At() interface{} {
 	return it.val
 }
 
