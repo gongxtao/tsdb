@@ -35,18 +35,18 @@ func TestChunk(t *testing.T) {
 		v func() Chunk
 		h func(c Chunk) error
 	} {
-		EncFloat64: {
-			func() Chunk { return NewXORChunk() },
-			testFloat64Chunk,
-			},
+		//EncFloat64: {
+		//	func() Chunk { return NewXORChunk() },
+		//	testFloat64Chunk,
+		//	},
 		EncInt64: {
 			func() Chunk { return NewIntegerChunk()	},
 			testInt64Chunk,
 		},
-		EncString: {
-			func() Chunk { return NewStringChunk()	},
-			testStringChunk,
-		},
+		//EncString: {
+		//	func() Chunk { return NewStringChunk()	},
+		//	testStringChunk,
+		//},
 	} {
 		t.Run(fmt.Sprintf("%s", enc), func(t *testing.T) {
 			for range make([]struct{}, 1) {
@@ -129,7 +129,7 @@ func testInt64Chunk(c Chunk) error {
 		ts = int64(1234123324)
 		v  = int64(1243535)
 	)
-	for i := 0; i < 3000; i++ {
+	for i := 0; i < 300; i++ {
 		ts += int64(rand.Intn(10000) + 1)
 		// v = rand.Float64()
 		if i%2 == 0 {
@@ -154,7 +154,7 @@ func testInt64Chunk(c Chunk) error {
 		}
 		exp = append(exp, Int64Value{t: ts, v: v.v})
 		b := c.Bytes()
-		fmt.Println("appended", len(b), binary.BigEndian.Uint16(b[:2]))
+		fmt.Println("appended", len(b), binary.BigEndian.Uint16(b[1:]))
 	}
 
 	it := c.Iterator()
@@ -209,7 +209,7 @@ func testFloat64Chunk(c Chunk) error {
 		app.Append(v)
 		exp = append(exp, pair{t: ts, v: v.v})
 		b := c.Bytes()
-		fmt.Println("appended", len(b), binary.BigEndian.Uint16(b[:2]))
+		fmt.Println("appended", len(b), binary.BigEndian.Uint16(b[1:]))
 	}
 
 	it := c.Iterator()

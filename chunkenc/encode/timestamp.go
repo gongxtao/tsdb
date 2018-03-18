@@ -22,11 +22,7 @@ func NewTimestampEncoder(b *BStream, delta uint64, t int64) *TimestampEncoder {
 func (e *TimestampEncoder) Encode(t int64, encounter uint16) {
 	var tDelta uint64
 
-<<<<<<< HEAD
 	if encounter == 0 {
-=======
-	if e.num == 0 {
->>>>>>> 1c613d0e7a9894f83c870fbe58e1bc4250710759
 		buf := make([]byte, binary.MaxVarintLen64)
 		for _, b := range buf[:binary.PutVarint(buf, t)] {
 			e.b.WriteByte(b)
